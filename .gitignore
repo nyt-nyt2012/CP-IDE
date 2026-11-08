@@ -1,0 +1,37 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.venv/
+venv/
+env/
+
+# ---- PyInstaller 打包产物 ----
+build/
+dist/
+*.manifest
+*.spec.bak
+
+# ---- 运行时临时目录（每次编译/评测都会新建） ----
+cp-ide/data/work/
+cp-ide/work/
+*.log
+
+# ---- 第三方参考代码（只用于对照实现思路，不属于本项目） ----
+_ref/
+
+# ---- 编辑器 / 系统 ----
+.vscode/
+.idea/
+*.swp
+*.swo
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# ---- 本地私有文件 ----
+.env
+.env.*
+*.key
+*.pem

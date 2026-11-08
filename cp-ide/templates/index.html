@@ -1,0 +1,734 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CP-IDE · 竞赛编程 IDE</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='vendor/codemirror/codemirror.min.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='vendor/katex/katex.min.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+<script>
+/* 如果用户直接双击打开了本文件（file:// 协议），页面模板不会被渲染、样式与
+   脚本也无法加载。这里给出一张明确的说明卡片，而不是一堆错乱的元素。 */
+if (location.protocol === 'file:') {
+    document.addEventListener('DOMContentLoaded', function () {
+        document.documentElement.innerHTML =
+            '<head><meta charset="utf-8"><title>CP-IDE · 启动提示</title></head>' +
+            '<body style="margin:0;min-height:100vh;display:grid;place-items:center;' +
+            'font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',\'Microsoft YaHei\',sans-serif;' +
+            'background:#0d1117;color:#d7dfec">' +
+            '<div style="max-width:640px;padding:34px 38px;border:1px solid #222c3d;' +
+            'border-radius:16px;background:#131a26;box-shadow:0 12px 34px rgba(0,0,0,.48);' +
+            'line-height:1.85">' +
+            '<div style="font-size:12px;color:#8b97ab;letter-spacing:1px">CP-IDE</div>' +
+            '<h1 style="margin:6px 0 14px;font-size:22px;color:#fff">请通过服务器打开本页面</h1>' +
+            '<p style="margin:0 0 14px;color:#b8c2d4">当前是以 <code style="color:#4c8dff">file://</code> 方式直接打开的本地文件，' +
+            '页面模板没有被渲染，样式表与脚本也加载不到，所以排版会全部失效。</p>' +
+            '<p style="margin:0 0 10px;color:#b8c2d4">请在 <b>cp-ide</b> 目录下启动服务器：</p>' +
+            '<pre style="margin:0 0 14px;padding:14px 16px;border-radius:10px;background:#0b1018;' +
+            'border:1px solid #222c3d;font-family:Consolas,monospace;font-size:13px;color:#3fb950">' +
+            'cd cp-ide\npython app.py</pre>' +
+            '<p style="margin:0;color:#b8c2d4">启动后访问 ' +
+            '<a href="http://127.0.0.1:5000/" style="color:#4c8dff">http://127.0.0.1:5000/</a> 即可。</p>' +
+            '</div></body>';
+    });
+}
+</script>
+</head>
+<body>
+
+<!-- 需要确认时的浮动提示条（例如关闭已修改的标签页） -->
+<div class="confirm-bar" id="confirmBar" hidden role="alertdialog" aria-label="请确认">
+  <span id="confirmText">确定要关闭吗？</span>
+  <button class="btn small" id="confirmYes">确定</button>
+  <button class="btn small ghost" id="confirmNo">取消</button>
+</div>
+
+<!-- 隐藏编译信息后，浮在页面上的恢复入口 -->
+<button class="status-restore" id="btnShowStatus" hidden title="显示编译信息面板">
+  <span class="ico">▲</span>编译面板
+</button>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark">&lt;/&gt;</span>
+    <div class="brand-text">
+      <strong>CP-IDE</strong>
+      <small>C++ 评测工作台</small>
+    </div>
+  </div>
+
+  <div class="topbar-file">
+    <span class="dot" id="compileDot"></span>
+    <input id="fileName" class="file-name" value="main.cpp" spellcheck="false" title="文件名">
+    <span class="dirty-badge" id="dirtyBadge" hidden>已修改</span>
+  </div>
+
+  <div class="topbar-actions">
+    <button class="btn" id="btnFormat" title="格式化代码，对比查看格式化前后效果 (Ctrl+Shift+F)">
+      <span class="ico">✦</span><span class="btn-text">格式化</span>
+    </button>
+    <button class="btn" id="btnInsert" title="在代码前插入代码片段">
+      <span class="ico">⇱</span><span class="btn-text">插入代码</span>
+    </button>
+    <button class="btn" id="btnExport" title="把当前文件另存到电脑里 (Ctrl+S)">
+      <span class="ico">⬇</span><span class="btn-text">导出</span>
+    </button>
+    <button class="btn" id="btnRun" title="运行当前样例 (F5)">
+      <span class="ico">▶</span><span class="btn-text">运行</span>
+    </button>
+    <button class="btn btn-primary" id="btnCompile" title="编译 (Ctrl+B)">
+      <span class="ico">▣</span><span class="btn-text">编译</span>
+    </button>
+    <button class="btn btn-run" id="btnCompileRun" title="先编译，编译通过后立刻运行当前样例 (Ctrl+Enter)">
+      <span class="ico">⏵</span><span class="btn-text">编译并运行</span>
+    </button>
+    <button class="btn btn-accent" id="btnJudge" title="评测全部测试点 (Ctrl+J)">
+      <span class="ico">✓</span><span class="btn-text">评测</span>
+    </button>
+    <button class="btn" id="btnToggleSide" title="隐藏 / 显示右侧样例侧栏 (Alt+H)">
+      <span class="ico">◨</span><span class="btn-text">侧栏</span>
+    </button>
+    <button class="btn" id="btnTools" title="编译环境 / 插入代码 / 查找替换 / 外观">
+      <span class="ico">⚙</span><span class="btn-text">设置</span>
+    </button>
+    <button class="icon-btn" id="btnTheme" title="切换深色 / 浅色模式 (Ctrl+D)">
+      <span id="themeIcon">☀</span>
+    </button>
+  </div>
+</header>
+
+<main class="workspace">
+
+  <!-- ============================ 编辑器 ============================ -->
+  <section class="editor-pane">
+
+    <!-- 标签页栏：像浏览器一样管理多个代码文件 -->
+    <div class="tabbar">
+      <div class="tab-strip" id="tabStrip" role="tablist" aria-label="打开的文件"></div>
+      <button class="icon-btn small" id="btnNewTab" title="新建文件 (Alt+N)">＋</button>
+      <button class="icon-btn small" id="btnSampleCode" title="把当前文件重置为示例代码">📄</button>
+      <button class="icon-btn small" id="btnOpenFile" title="打开本地文件（.py / .md / .pdf 等）">📂</button>
+      <button class="icon-btn small" id="btnDemoDocs" title="打开内置示例文档">📚</button>
+      <div class="doc-menu" id="docMenu" hidden>
+        <div class="doc-menu-title">内置示例</div>
+        <div id="docMenuList">
+          {% for doc in demo_docs %}
+          <button class="doc-menu-item" type="button" data-doc="{{ doc.name }}">
+            <span class="doc-menu-name">{{ doc.name }}</span>
+            <span class="doc-menu-desc">{{ doc.lang_name }} · {{ doc.size_text }}</span>
+          </button>
+          {% endfor %}
+        </div>
+      </div>
+      <input type="file" id="openFileInput" class="hidden-input" aria-label="打开本地文件">
+      <span class="spacer"></span>
+      <span class="tabbar-info" id="tabInfo">1 个文件</span>
+      <button class="btn small" id="btnSplit" title="左右分栏对比 (Alt+S)">
+        <span class="ico">▥</span><span class="btn-text">分栏</span>
+      </button>
+    </div>
+
+    <div class="editor-split" id="editorSplit">
+
+      <div class="editor-col" id="colLeft">
+        <div class="pane-head">
+          <span class="pane-title">源代码</span>
+          <span class="lang-badge" id="langBadge">C++</span>
+          <span class="pane-meta" id="cursorInfo">行 1，列 1</span>
+          <span class="spacer"></span>
+          <span class="pane-meta" id="codeStats">0 行</span>
+          <button class="icon-btn small" id="btnToggleView" hidden title="在源码与预览之间切换">👁</button>
+          <button class="icon-btn small" id="btnSearchMini" title="查找替换 (Ctrl+F)">🔍</button>
+        </div>
+        <div class="editor-wrap" id="wrapLeft">
+          <div class="cm-host" id="hostLeft"></div>
+          <div class="cm-park" id="cmPark"></div>
+          <div class="editor-empty" id="editorEmpty" hidden>
+            <p class="editor-empty-title">当前没有打开的文件</p>
+            <p class="editor-empty-hint">
+              新建一个空白文件，或打开本地已有的 .cpp / .py / .md；
+              也可以从内置示例里挑一个直接开始。
+            </p>
+            <div class="editor-empty-actions">
+              <button type="button" class="btn" id="btnEmptyNew">＋ 新建文件</button>
+              <button type="button" class="btn" id="btnEmptyOpen">📂 打开文件</button>
+              <button type="button" class="btn" id="btnEmptyDemo">📚 内置示例</button>
+            </div>
+          </div>
+        </div>
+        <div class="doc-view" id="docLeft" hidden></div>
+      </div>
+
+      <div class="split-handle" id="splitHandle" hidden title="拖动调整左右比例"></div>
+
+      <div class="editor-col" id="colRight" hidden>
+        <div class="pane-head">
+          <span class="pane-title">对比</span>
+          <span class="lang-badge" id="langBadge2"></span>
+          <select id="cmpSelect" class="cmp-select" title="选择右侧要对比的文件"></select>
+          <span class="spacer"></span>
+          <label class="checkbox mini" title="左右两栏滚动位置保持一致">
+            <input type="checkbox" id="chkSyncScroll" checked>联动
+          </label>
+          <button class="icon-btn small" id="btnSwap" title="把右侧文件设为当前编辑目标">⇄</button>
+          <button class="icon-btn small" id="btnCloseSplit" title="关闭分栏 (Alt+S)">✕</button>
+        </div>
+        <div class="editor-wrap" id="wrapRight">
+          <div class="cm-host" id="hostRight"></div>
+        </div>
+        <div class="doc-view" id="docRight" hidden></div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ============================ 侧栏 ============================ -->
+  <aside class="side-pane">
+
+    <!-- 模式切换：样例调试 / 批量评测 -->
+    <div class="mode-switch" role="tablist" aria-label="工作模式">
+      <button class="mode-btn active" data-mode="sample" role="tab" aria-selected="true">样例调试</button>
+      <button class="mode-btn" data-mode="judge" role="tab" aria-selected="false">批量评测</button>
+      <button class="icon-btn small side-fold" id="btnFoldSide" title="隐藏侧栏，编辑区占满整屏 (Alt+H)">◀</button>
+    </div>
+
+    <!-- ---------------- 样例调试 ---------------- -->
+    <div class="mode-page active" data-mode-page="sample">
+      <div class="panel-head">
+        <span class="panel-title">样例测试</span>
+        <span class="spacer"></span>
+        <button class="icon-btn small" id="btnSampleAdd" title="新增样例">＋</button>
+        <button class="icon-btn small" id="btnSampleReload" title="载入内置样例">⟳</button>
+      </div>
+      <div class="sample-list" id="sampleList"></div>
+      <div class="sample-editor">
+        <div class="sample-io">
+          <label class="io-label">
+            <span>输入</span>
+            <textarea id="sampleInput" spellcheck="false" placeholder="样例输入…"></textarea>
+          </label>
+          <label class="io-label">
+            <span>期望输出</span>
+            <textarea id="sampleExpected" spellcheck="false" placeholder="期望输出…"></textarea>
+          </label>
+        </div>
+        <div class="sample-output">
+          <label class="io-label io-label-output">
+            <span>程序输出
+              <button type="button" class="mini-btn" id="btnClearOutput" title="清空">清空</button>
+            </span>
+            <textarea id="sampleOutput" spellcheck="false" readonly
+                      placeholder="运行样例后，程序实际打印的内容会显示在这里"></textarea>
+          </label>
+          <label class="io-label io-label-stderr" id="stderrBox" hidden>
+            <span>错误输出 (stderr)</span>
+            <textarea id="sampleStderr" spellcheck="false" readonly
+                      placeholder="程序写到 stderr 的内容"></textarea>
+          </label>
+        </div>
+        <div class="sample-actions">
+          <button class="btn small" id="btnSampleRun">▶ 运行此样例</button>
+          <button class="btn small ghost" id="btnSampleDel">删除</button>
+          <span class="sample-result" id="sampleResult"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ---------------- 批量评测 ---------------- -->
+    <div class="mode-page" data-mode-page="judge">
+      <div class="mode-scroll">
+
+        <div class="section">
+          <div class="section-title">
+            测试数据
+            <span class="spacer"></span>
+            <button class="link-btn" id="btnLoadDemo">载入示例测试集</button>
+          </div>
+          <div class="dropzone" id="dropzone">
+            <input type="file" id="fileInput" class="hidden-input" multiple
+                   aria-label="选择测试数据文件">
+            <p><strong>点击选择</strong> 或拖拽文件到此处</p>            <small>支持 <code>.in</code> / <code>.out</code> / <code>.cfg</code> / <code>.zip</code></small>
+          </div>
+          <div class="file-chips" id="fileChips"></div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">
+            自定义 Checker
+            <span class="spacer"></span>
+            <span class="chip" id="testlibChip">testlib</span>
+          </div>
+          <p class="checker-status" id="checkerStatus">
+            把 <code>checker.cpp</code> 直接放进 zip 里上传即可自动启用；
+            内置 testlib，无需再单独上传库文件。
+          </p>
+          <div class="row-actions">
+            <button class="btn small" id="btnCheckerTemplate" title="新建一个 checker.cpp 标签页并填入模板">
+              插入 checker 模板
+            </button>
+            <button class="btn small" id="btnDemoChecker" title="载入自带 checker.cpp 的示例测试包">
+              载入示例（含 checker）
+            </button>
+            <button class="btn small" id="btnTestlibView" title="在内置编辑器中查看 testlib.h">
+              查看 testlib.h
+            </button>
+            <button class="btn small ghost" id="btnTestlibDownload" title="下载 testlib.h 到本地">
+              下载 testlib.h
+            </button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">
+            测试点配置文件
+            <span class="spacer"></span>
+            <button class="link-btn" id="btnConfigHelp">格式说明</button>
+          </div>
+          <textarea id="configText" class="config-area" spellcheck="false"
+            placeholder="[config]&#10;std = c++14&#10;time_limit = 1000&#10;memory_limit = 256&#10;checker = default&#10;&#10;[tests]&#10;1 | 1.in | 1.out | 1000 | 256"></textarea>
+        </div>
+
+        <div class="section">
+          <div class="section-title">评测结果</div>
+          <div class="judge-summary" id="judgeSummary"></div>
+          <div class="point-list" id="pointList">
+            <p class="empty-hint">尚未评测。点击右上角「评测」按钮开始。</p>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </aside>
+
+  <!-- ============================ 工具抽屉 ============================ -->
+  <aside class="tools-drawer" id="toolsDrawer" hidden>
+    <div class="drawer-head">
+      <div class="tab-bar" role="tablist">
+        <button class="tab active" data-tab="env" role="tab">编译环境</button>
+        <button class="tab" data-tab="insert" role="tab">插入代码</button>
+        <button class="tab" data-tab="search" role="tab">查找替换</button>
+        <button class="tab" data-tab="appearance" role="tab">外观</button>
+      </div>
+      <button class="icon-btn small" id="btnToolsClose" title="关闭设置面板">✕</button>
+    </div>
+    <div class="drawer-body">
+
+      <!-- ---------------- 编译环境 ---------------- -->
+      <div class="tab-page active" data-page="env">
+        <div id="secCppEnv">
+        <div class="section">
+          <div class="section-title">C++ 标准</div>
+          <div class="field">
+            <select id="optStd">
+              {% for std in supported_stds %}
+              <option value="{{ std }}" {% if std == 'c++14' %}selected{% endif %}>{{ std }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">警告选项</div>
+          <div class="checkbox-grid">
+            {% for flag in warning_flags %}
+            <label class="checkbox"><input type="checkbox" value="{{ flag.key }}" data-flag="warning"> <code>{{ flag.label }}</code></label>
+            {% endfor %}
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">优化与其它选项</div>
+          <div class="field row">
+            <label>优化级别
+              <select id="optLevel">
+                <option value="-O0">-O0</option>
+                <option value="-O1">-O1</option>
+                <option value="-O2" selected>-O2</option>
+                <option value="-O3">-O3</option>
+                <option value="-Os">-Os</option>
+                <option value="-Ofast">-Ofast</option>
+              </select>
+            </label>
+          </div>
+          <div class="checkbox-grid">
+            <label class="checkbox"><input type="checkbox" id="optDebug"> <code>-g</code> 调试信息</label>
+            <label class="checkbox"><input type="checkbox" id="optStatic"> <code>-static</code> 静态链接</label>
+            <label class="checkbox"><input type="checkbox" id="optSanitize"> <code>asan+ubsan</code> 内存检查</label>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">自定义编译参数</div>
+          <input id="optExtra" class="text-input" spellcheck="false" placeholder="例如：-fno-stack-protector -DDEBUG">
+        </div>
+        </div>
+
+        <div class="section" id="secPythonEnv" hidden>
+          <div class="section-title">Python 运行环境</div>
+          <p class="field-hint">
+            运行 <code>.py</code> 文件用的解释器。留空则使用 IDE 自带的解释器；
+            填一个路径（例如 <code>C:\Python312\python.exe</code>）即可换成别的版本。
+          </p>
+          <input id="optPythonPath" class="text-input" spellcheck="false"
+                 placeholder="留空 = 使用内置解释器">
+          <p class="field-hint" id="pythonInterpreterInfo"></p>
+        </div>
+
+        <div class="section">
+          <div class="section-title">评测参数</div>
+          <div class="field row">
+            <label>时间限制
+              <input id="optTimeLimit" class="text-input narrow" type="number" value="1000" min="1"> ms
+            </label>
+            <label>空间限制
+              <input id="optMemoryLimit" class="text-input narrow" type="number" value="256" min="1"> MB
+            </label>
+          </div>
+          <div class="field row">
+            <label>比较方式
+              <select id="optChecker">
+                {% for choice in checker_choices %}
+                <option value="{{ choice.value }}">{{ choice.label }}</option>
+                {% endfor %}
+              </select>
+            </label>
+          </div>
+          <p class="field-hint" id="checkerHint">
+            选择「自定义 Checker」时，IDE 会使用上传数据里的 <code>checker.cpp</code>，
+            或编辑器中名为 <code>checker.cpp</code> 的标签页内容。
+          </p>
+          <p class="field-hint">
+            内置 testlib <span id="testlibVersionInline">v0.9.45</span>，
+            编译 checker 时会自动加入头文件搜索路径。
+          </p>
+        </div>
+
+        <div class="section">
+          <div class="section-title">实际编译命令</div>
+          <pre class="command-preview" id="commandPreview">g++ …</pre>
+        </div>
+      </div>
+
+      <!-- ---------------- 外观 ---------------- -->
+      <div class="tab-page" data-page="appearance">
+        <div class="section">
+          <div class="section-title">代码字体</div>
+          <div class="option-grid" id="fontPicker" role="group" aria-label="代码字体">
+            <button type="button" class="option-card" data-mono="default" aria-pressed="true"
+                    style="font-family: monospace">
+              <span class="option-name">Monospace（浏览器默认）</span>
+              <span class="option-sample">int main() { return 0; }</span>
+            </button>
+            <button type="button" class="option-card" data-mono="consolas" aria-pressed="false"
+                    style="font-family: Consolas, monospace">
+              <span class="option-name">Consolas</span>
+              <span class="option-sample">int main() { return 0; }</span>
+            </button>
+            <button type="button" class="option-card" data-mono="cascadia-mono" aria-pressed="false"
+                    style="font-family: 'Cascadia Mono', monospace">
+              <span class="option-name">Cascadia Mono</span>
+              <span class="option-sample">int main() { return 0; }</span>
+            </button>
+            <button type="button" class="option-card" data-mono="cascadia-code" aria-pressed="false"
+                    style="font-family: 'Cascadia Code', monospace">
+              <span class="option-name">Cascadia Code</span>
+              <span class="option-sample">int main() { return 0; }</span>
+            </button>
+            <button type="button" class="option-card" data-mono="lucida-console" aria-pressed="false"
+                    style="font-family: 'Lucida Console', monospace">
+              <span class="option-name">Lucida Console</span>
+              <span class="option-sample">int main() { return 0; }</span>
+            </button>
+            <button type="button" class="option-card" data-mono="jetbrains-mono" aria-pressed="false"
+                    style="font-family: 'JetBrains Mono', monospace">
+              <span class="option-name">JetBrains Mono</span>
+              <span class="option-sample">int main() { return 0; }</span>
+            </button>
+            <button type="button" class="option-card" data-mono="fira-code" aria-pressed="false"
+                    style="font-family: 'Fira Code', monospace">
+              <span class="option-name">Fira Code</span>
+              <span class="option-sample">int main() { return 0; }</span>
+            </button>
+            <button type="button" class="option-card" data-mono="source-code-pro" aria-pressed="false"
+                    style="font-family: 'Source Code Pro', monospace">
+              <span class="option-name">Source Code Pro</span>
+              <span class="option-sample">int main() { return 0; }</span>
+            </button>
+            <button type="button" class="option-card" data-mono="sarasa-mono" aria-pressed="false"
+                    style="font-family: 'Sarasa Mono SC', 'Microsoft YaHei Mono', monospace">
+              <span class="option-name">Sarasa Mono SC（中文等宽）</span>
+              <span class="option-sample">int main() { return 0; }</span>
+            </button>
+            <button type="button" class="option-card" data-mono="courier-new" aria-pressed="false"
+                    style="font-family: 'Courier New', monospace">
+              <span class="option-name">Courier New</span>
+              <span class="option-sample">int main() { return 0; }</span>
+            </button>
+          </div>
+          <p class="field-hint">
+            系统未安装所选字体时会自动回退到下一个可用字体。
+            该设置同时作用于代码编辑器和样例输入 / 输出框。
+          </p>
+        </div>
+
+        <div class="section">
+          <div class="section-title">代码字号</div>
+          <div class="option-grid compact" id="fontSizePicker" role="group" aria-label="代码字号">
+            <button type="button" class="option-chip" data-size="11.5" aria-pressed="false">11.5</button>
+            <button type="button" class="option-chip" data-size="12.5" aria-pressed="false">12.5</button>
+            <button type="button" class="option-chip" data-size="13.5" aria-pressed="true">13.5</button>
+            <button type="button" class="option-chip" data-size="14.5" aria-pressed="false">14.5</button>
+            <button type="button" class="option-chip" data-size="16" aria-pressed="false">16</button>
+            <button type="button" class="option-chip" data-size="18" aria-pressed="false">18</button>
+          </div>
+          <p class="field-hint">单位 px，作用于代码编辑器。</p>
+        </div>
+
+        <div class="section">
+          <div class="section-title">界面主题</div>
+          <div class="option-grid compact" id="themePicker" role="group" aria-label="界面主题">
+            <button type="button" class="option-chip" data-theme="dark" aria-pressed="true">深色</button>
+            <button type="button" class="option-chip" data-theme="light" aria-pressed="false">浅色</button>
+            <button type="button" class="option-chip" data-theme="auto" aria-pressed="false">跟随系统</button>
+          </div>
+          <p class="field-hint">也可以直接点击顶栏右上角的太阳 / 月亮图标切换。</p>
+        </div>
+
+        <div class="section">
+          <div class="section-title">编译信息区</div>
+          <div class="checkbox-grid">
+            <label class="checkbox"><input type="checkbox" id="optStatusHidden"> 完全隐藏编译信息</label>
+            <label class="checkbox"><input type="checkbox" id="optStatusCollapsed"> 折叠编译信息正文</label>
+          </div>
+          <p class="field-hint">
+            隐藏后编辑器会占满整个窗口，右下角保留「编译面板」按钮随时恢复。
+          </p>
+        </div>
+
+        <div class="section">
+          <div class="section-title">Markdown 文档</div>
+          <div class="checkbox-grid">
+            <label class="checkbox"><input type="checkbox" id="optMdHighlight" checked> 代码块语法高亮</label>
+            <label class="checkbox"><input type="checkbox" id="optMdLineNumbers"> 代码块显示行号</label>
+          </div>
+          <p class="field-hint">
+            语法高亮使用内置的 CodeMirror 模式，完全离线，不联网。
+            也可以只给某个代码块加行号：在围栏后面写 <code>line-numbers</code> 即可。
+          </p>
+        </div>
+
+        <div class="section">
+          <div class="section-title">工作区与备份</div>
+          <div class="option-grid compact">
+            <button type="button" class="option-chip" id="btnExportCurrent">导出当前文件</button>
+            <button type="button" class="option-chip" id="btnExportAll">导出全部文件（zip）</button>
+            <button type="button" class="option-chip" id="btnReloadWorkspace">重新载入上次工作区</button>
+          </div>
+          <p class="field-hint">
+            IDE 会自动把代码、编译信息、字体字号等保存到本机
+            <code>%LOCALAPPDATA%\CP-IDE\workspace.json</code>，下次打开自动恢复。
+          </p>
+        </div>
+
+        <div class="section">
+          <div class="section-title">关于</div>
+          <div class="about-box" id="aboutBox">
+            <p class="field-hint">正在读取版本信息…</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ---------------- 插入代码 ---------------- -->
+      <div class="tab-page" data-page="insert">
+        <div class="section">
+          <div class="section-title">插入位置</div>
+          <div class="field">
+            <select id="insertPosition">
+              <option value="top">文件最前</option>
+              <option value="after_include">在 #include 之后</option>
+              <option value="before_main">在 main 函数之前</option>
+              <option value="cursor">在光标处</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">
+            代码片段库
+            <span class="spacer"></span>
+            <button class="link-btn" id="btnNewSnippet">+ 新建</button>
+          </div>
+          <div class="snippet-list" id="snippetList"></div>
+        </div>
+
+        <div class="section" id="snippetEditorBox" hidden>
+          <div class="section-title">编辑片段</div>
+          <input id="snippetName" class="text-input" placeholder="片段名称">
+          <input id="snippetDesc" class="text-input" placeholder="一句话描述（可选）">
+          <textarea id="snippetCode" class="config-area code" spellcheck="false" placeholder="代码…"></textarea>
+          <div class="row-actions">
+            <button class="btn small" id="btnSnippetSave">保存</button>
+            <button class="btn small ghost" id="btnSnippetCancel">取消</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ---------------- 查找替换 ---------------- -->
+      <div class="tab-page" data-page="search">
+        <div class="section">
+          <div class="section-title">查找</div>
+          <input id="searchFind" class="text-input" spellcheck="false" placeholder="查找内容…">
+          <div class="checkbox-grid">
+            <label class="checkbox"><input type="checkbox" id="searchCase"> 区分大小写</label>
+            <label class="checkbox"><input type="checkbox" id="searchRegex"> 正则表达式</label>
+            <label class="checkbox"><input type="checkbox" id="searchWord"> 全字匹配</label>
+          </div>
+          <div class="row-actions">
+            <button class="btn small" id="btnFindNext">查找下一个</button>
+            <button class="btn small" id="btnFindPrev">查找上一个</button>
+            <button class="btn small ghost" id="btnFindAll">全选匹配项</button>
+          </div>
+          <div class="search-status" id="searchStatus"></div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">替换</div>
+          <input id="searchReplace" class="text-input" spellcheck="false" placeholder="替换为…">
+          <div class="row-actions">
+            <button class="btn small" id="btnReplaceOne">替换当前</button>
+            <button class="btn small" id="btnReplaceAll">全部替换</button>
+            <button class="btn small ghost" id="btnReplaceSel">替换选中内容</button>
+          </div>
+        </div>
+
+        <div class="section">
+          <p class="hint">提示：<kbd>Ctrl</kbd>+<kbd>F</kbd> 打开编辑器原生查找，<kbd>Ctrl</kbd>+<kbd>H</kbd> 打开查找替换对话框。</p>
+        </div>
+      </div>
+
+    </div>
+  </aside>
+</main>
+
+<!-- ============================ 格式化对比视图 ============================ -->
+<div class="format-overlay" id="formatModal" hidden>
+  <div class="format-card">
+    <div class="format-head">
+      <span class="format-title">代码格式化</span>
+      <span class="spacer"></span>
+      <button class="btn small" id="btnFmtRun" title="按下面的设置重新生成格式化结果">
+        <span class="ico">✦</span>格式化代码
+      </button>
+      <button class="btn small" id="btnFmtApply" title="用右侧的格式化结果替换编辑器中的代码">应用到编辑器</button>
+      <button class="btn small btn-primary" id="btnFmtQuick" title="直接格式化当前代码并写回编辑器">
+        <span class="ico">⚡</span>一键格式化
+      </button>
+      <button class="icon-btn small" id="btnFmtClose" title="关闭">✕</button>
+    </div>
+
+    <div class="format-opts">
+      <label>缩进
+        <select id="fmtIndent">
+          <option value="2">2 空格</option>
+          <option value="4" selected>4 空格</option>
+          <option value="8">8 空格</option>
+        </select>
+      </label>
+      <label>大括号
+        <select id="fmtBrace">
+          <option value="allman" selected>Allman（另起一行）</option>
+          <option value="kr">K&amp;R（同行）</option>
+        </select>
+      </label>
+      <label class="checkbox"><input type="checkbox" id="fmtAlign" checked> 对齐行尾注释</label>
+      <label class="checkbox"><input type="checkbox" id="fmtBlank" checked> 保留空行</label>
+      <span class="spacer"></span>
+      <span class="format-status" id="fmtStatus"></span>
+    </div>
+
+    <div class="format-split">
+      <div class="format-pane">
+        <div class="format-pane-head">原始代码</div>
+        <div class="format-view"><textarea id="fmtOriginal" spellcheck="false" readonly></textarea></div>
+      </div>
+      <div class="format-pane">
+        <div class="format-pane-head">格式化结果</div>
+        <div class="format-view"><textarea id="fmtResult" spellcheck="false" readonly></textarea></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================ 固定编译信息区 ============================ -->
+<footer class="statusbar" id="statusbar">
+  <div class="resize-handle" id="resizeHandle"></div>
+  <div class="status-head">
+    <span class="status-title">编译信息</span>
+    <span class="chip" id="compileStatus">未编译</span>
+    <span class="chip" id="compileTime"></span>
+    <span class="chip" id="compileCounts"></span>
+    <span class="spacer"></span>
+    <span class="status-cmd" id="compileCommand"></span>
+    <button class="icon-btn small" id="btnClearLog" title="清空">🗑</button>
+    <button class="icon-btn small" id="btnToggleStatus" title="折叠 / 展开正文">▾</button>
+    <button class="btn small hide-status-btn" id="btnHideStatus" title="完全隐藏编译信息（专注写代码）">✕ 隐藏</button>
+  </div>
+  <div class="status-body" id="compileLog">
+    <p class="empty-hint">点击「编译」按钮开始编译，编译输出、错误与警告会显示在这里。点击错误可以跳转到对应行。</p>
+  </div>
+</footer>
+
+<!-- 配置说明弹窗 -->
+<div class="modal" id="configModal" hidden>
+  <div class="modal-card">
+    <div class="modal-head">
+      <span>测试点配置文件格式</span>
+      <button class="icon-btn small" id="btnConfigClose">✕</button>
+    </div>
+    <div class="modal-body">
+      <p>配置文件采用 INI 风格，<code>[config]</code> 段为全局参数，<code>[tests]</code> 段列出测试点。</p>
+      <pre>[config]
+std = c++14            ; C++ 标准
+time_limit = 1000      ; 默认时间限制（毫秒）
+memory_limit = 256     ; 默认空间限制（MB）
+checker = default      ; default / strict / ignore_trailing_space / wcmp / ncmp / custom
+output_limit = 256     ; 单次输出上限（KB）
+compile_args = -Wall   ; 追加的编译参数
+
+[tests]
+1 | 1.in | 1.out | 1000 | 256
+2 | 2.in | 2.out
+3 | 3.in | 3.out | 2000 | 512 | ncmp</pre>
+      <p>每个测试点字段依次为：<b>编号 | 输入文件 | 输出文件 | 时间限制(ms) | 空间限制(MB) | 比较方式</b>，后三项可省略。</p>
+      <p>也支持通配写法，例如 <code>1-10.in | 1-10.out</code> 会展开为 10 个测试点；<code>*.in</code> 会按文件名顺序配对 <code>*.out</code>。</p>
+      <p>不提供配置文件时，IDE 会自动把同名 <code>.in</code> 与 <code>.out</code> 配对。</p>
+    </div>
+  </div>
+</div>
+
+<div class="toast-stack" id="toastStack"></div>
+
+<script src="{{ url_for('static', filename='vendor/codemirror/codemirror.min.js') }}"></script>
+<script src="{{ url_for('static', filename='vendor/codemirror/mode/clike/clike.min.js') }}"></script>
+<script src="{{ url_for('static', filename='vendor/codemirror/mode/python/python.min.js') }}"></script>
+<script src="{{ url_for('static', filename='vendor/codemirror/mode/xml/xml.min.js') }}"></script>
+<script src="{{ url_for('static', filename='vendor/codemirror/mode/markdown/markdown.min.js') }}"></script>
+<script src="{{ url_for('static', filename='vendor/codemirror/mode/gfm/gfm.min.js') }}"></script>
+<script src="{{ url_for('static', filename='vendor/codemirror/addon/search/search.min.js') }}"></script>
+<script src="{{ url_for('static', filename='vendor/codemirror/addon/search/searchcursor.min.js') }}"></script>
+<script src="{{ url_for('static', filename='vendor/codemirror/addon/search/jump-to-line.min.js') }}"></script>
+<script src="{{ url_for('static', filename='vendor/codemirror/addon/dialog/dialog.min.js') }}"></script>
+<script src="{{ url_for('static', filename='vendor/codemirror/addon/edit/matchbrackets.min.js') }}"></script>
+<script src="{{ url_for('static', filename='vendor/codemirror/addon/edit/closebrackets.min.js') }}"></script>
+<script src="{{ url_for('static', filename='vendor/codemirror/addon/comment/comment.min.js') }}"></script>
+<script src="{{ url_for('static', filename='vendor/codemirror/addon/selection/active-line.min.js') }}"></script>
+<script src="{{ url_for('static', filename='vendor/codemirror/addon/runmode/runmode.min.js') }}"></script>
+<script src="{{ url_for('static', filename='vendor/codemirror/addon/display/placeholder.min.js') }}"></script>
+<script src="{{ url_for('static', filename='vendor/marked/marked.min.js') }}"></script>
+<script src="{{ url_for('static', filename='vendor/katex/katex.min.js') }}"></script>
+<script src="{{ url_for('static', filename='vendor/pdfjs/pdf.min.js') }}"></script>
+<script src="{{ url_for('static', filename='js/md-enhance.js') }}"></script>
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>

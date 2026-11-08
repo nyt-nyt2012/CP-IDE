@@ -1,0 +1,33 @@
+# 默认：按文本处理，仓库内统一 LF，工作区保持原样
+* text=auto
+
+# Windows 脚本与批处理必须是 CRLF（Start CP-IDE.bat 依赖这一点）
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.vbs text eol=crlf
+
+# 二进制资源不做任何换行转换
+*.exe binary
+*.dll binary
+*.pdf binary
+*.png binary
+*.jpg binary
+*.ico binary
+*.zip binary
+*.7z binary
+*.ttf binary
+*.woff binary
+*.woff2 binary
+
+# 源码 / 文档统一 LF
+*.py text eol=lf
+*.js text eol=lf
+*.css text eol=lf
+*.html text eol=lf
+*.md text eol=lf
+*.cpp text eol=lf
+*.h text eol=lf
+*.in text eol=lf
+*.out text eol=lf
+*.cfg text eol=lf
+*.json text eol=lf
