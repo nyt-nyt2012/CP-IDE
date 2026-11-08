@@ -33,6 +33,8 @@
             highlight: true,
             lineNumbers: false
         },
+        shortcuts: {},             // 自定义快捷键：{ 功能ID: 'Ctrl+Shift+K' }
+        recording: null,           // 正在录制按键的功能 ID
         themePref: 'auto',         // 主题偏好（dark / light / auto）
         lastCompile: null          // 上一次编译的结果（会被保存下来）
     };
@@ -220,12 +222,9 @@ int main() {
         styleActiveLine: true,
         matchBrackets: true,
         autoCloseBrackets: true,
-        extraKeys: {
-            'Ctrl-Space': 'autocomplete',
-            'Shift-Tab': 'indentLess',
-            'Ctrl-/': 'toggleComment',
-            'Ctrl-Alt-Enter': compileCode
-        },
+        /* 快捷键统一在 buildEditorExtraKeys() 里生成，
+           每个编辑器实例创建后再单独注入，方便随时改键。 */
+        extraKeys: {},
         viewportMargin: 30
     };
 
@@ -263,6 +262,8 @@ int main() {
             if (other) syncScroll(instance, other);
         });
         tab.cm = instance;
+        /* 新建的编辑器也要拿到最新的快捷键表 */
+        try { instance.setOption('extraKeys', buildEditorExtraKeys()); } catch (err) { /* ignore */ }
         return instance;
     }
 
@@ -363,6 +364,300 @@ int main() {
         if (!el || !cm2) return;
         const pos = cm2.getCursor();
         el.textContent = '行 ' + (pos.line + 1) + '，列 ' + (pos.ch + 1);
+    }
+
+    /* ------------------------------------------------------------------ */
+    /*  快捷键                                                              */
+    /* ------------------------------------------------------------------ */
+    /* 所有能改的快捷键都登记在这里：
+         scope = 'global' —— 由页面最外层的 keydown 统一分发（任何地方都能按）
+         scope = 'editor' —— 注入 CodeMirror 的 extraKeys，只在编辑器里生效
+       keys 用统一写法：'Ctrl' / 'Alt' / 'Shift' + '+' + 按键名，例如 'Ctrl+Shift+F'
+       用户改过的键位存在 state.shortcuts 里（只存改过的，升级后仍能用默认值）。 */
+    const SHORTCUT_DEFS = [
+        /* ---------------- 全局 ---------------- */
+        { id: 'compile', group: '编译与运行', scope: 'global', keys: 'Ctrl+B',
+          label: '编译', run: () => compileCode() },
+        { id: 'compileRun', group: '编译与运行', scope: 'global', keys: 'Ctrl+Enter',
+          label: '编译并运行', run: () => compileAndRun() },
+        { id: 'runSample', group: '编译与运行', scope: 'global', keys: 'F5',
+          label: '运行当前样例', run: () => { switchMode('sample'); runSample(); } },
+        { id: 'judgeAll', group: '编译与运行', scope: 'global', keys: 'Ctrl+J',
+          label: '批量评测', run: () => { switchMode('judge'); judgeAll(); } },
+        { id: 'formatView', group: '编译与运行', scope: 'global', keys: 'Ctrl+Shift+F',
+          label: '格式化对比视图', run: () => openFormatView() },
+        { id: 'exportFile', group: '文件', scope: 'global', keys: 'Ctrl+S',
+          label: '导出当前文件', run: () => exportCurrentFile() },
+        { id: 'newTab', group: '文件', scope: 'global', keys: 'Alt+N',
+          label: '新建标签页', run: () => newTab() },
+        { id: 'closeTab', group: '文件', scope: 'global', keys: 'Alt+W',
+          label: '关闭当前标签页', run: () => requestCloseTab(state.activeTabId) },
+        { id: 'toggleTheme', group: '外观与视图', scope: 'global', keys: 'Ctrl+D',
+          label: '切换深色 / 浅色', run: () => toggleTheme() },
+        { id: 'toggleSplit', group: '外观与视图', scope: 'global', keys: 'Alt+S',
+          label: '开关左右分栏', run: () => toggleSplit() },
+        { id: 'toggleSide', group: '外观与视图', scope: 'global', keys: 'Alt+H',
+          label: '隐藏 / 显示右侧侧栏', run: () => toggleSide() },
+        { id: 'prevTab', group: '外观与视图', scope: 'global', keys: 'Alt+ArrowLeft',
+          label: '上一个标签页', run: () => switchTabOffset(-1) },
+        { id: 'nextTab', group: '外观与视图', scope: 'global', keys: 'Alt+ArrowRight',
+          label: '下一个标签页', run: () => switchTabOffset(1) },
+        { id: 'closePanel', group: '外观与视图', scope: 'global', keys: 'Escape',
+          label: '关闭弹窗 / 设置抽屉', run: () => closeTopPanel() },
+
+        /* ---------------- 编辑器内 ---------------- */
+        { id: 'edCompile', group: '代码编辑器', scope: 'editor', keys: 'Ctrl+Alt+Enter',
+          cm: 'Ctrl-Alt-Enter', label: '编译', cmd: () => compileCode() },
+        { id: 'edAutocomplete', group: '代码编辑器', scope: 'editor', keys: 'Ctrl+Space',
+          cm: 'Ctrl-Space', label: '自动补全', cmd: 'autocomplete' },
+        { id: 'edComment', group: '代码编辑器', scope: 'editor', keys: 'Ctrl+/',
+          cm: 'Ctrl-/', label: '注释 / 取消注释', cmd: 'toggleComment' },
+        { id: 'edIndent', group: '代码编辑器', scope: 'editor', keys: 'Shift+Tab',
+          cm: 'Shift-Tab', label: '反缩进', cmd: 'indentLess' },
+        { id: 'edFind', group: '查找', scope: 'editor', keys: 'Ctrl+F',
+          cm: 'Ctrl-F', label: '查找', cmd: 'find' },
+        { id: 'edReplace', group: '查找', scope: 'editor', keys: 'Ctrl+H',
+          cm: 'Ctrl-H', label: '查找替换', cmd: 'replace' },
+        { id: 'edFindNext', group: '查找', scope: 'editor', keys: 'Ctrl+G',
+          cm: 'Ctrl-G', label: '查找下一个', cmd: 'findNext' },
+        { id: 'edFindPrev', group: '查找', scope: 'editor', keys: 'Ctrl+Shift+G',
+          cm: 'Shift-Ctrl-G', label: '查找上一个', cmd: 'findPrev' },
+        { id: 'edUndo', group: '代码编辑器', scope: 'editor', keys: 'Ctrl+Z',
+          cm: 'Ctrl-Z', label: '撤销', cmd: 'undo' },
+        { id: 'edRedo', group: '代码编辑器', scope: 'editor', keys: 'Ctrl+Y',
+          cm: 'Ctrl-Y', label: '重做', cmd: 'redo' }
+    ];
+
+    /* CodeMirror 自带、但会被我们接管的键位：统一置空，避免和新绑定的键同时触发 */
+    const CM_TAKEOVER_KEYS = ['Shift-Ctrl-F', 'Ctrl-S', 'Ctrl-D', 'Alt-Left', 'Alt-Right'];
+
+    /* 按键名归一化：把浏览器事件转成 'Ctrl+Shift+F' 这样的字符串 */
+    function canonFromEvent(event) {
+        const mods = [];
+        if (event.ctrlKey || event.metaKey) mods.push('Ctrl');
+        if (event.altKey) mods.push('Alt');
+        if (event.shiftKey) mods.push('Shift');
+        let key = event.key;
+        if (!key || key === 'Unidentified') return '';
+        if (key === ' ' || key === 'Spacebar') key = 'Space';
+        else if (key.length === 1) key = key.toUpperCase();
+        else if (/^Arrow/.test(key)) { /* ArrowLeft 等保持原样 */ }
+        else if (/^F\d{1,2}$/.test(key)) { /* 功能键保持原样 */ }
+        else key = key.charAt(0).toUpperCase() + key.slice(1);
+        if (mods.indexOf('Shift') >= 0 && key.length === 1) key = key.toUpperCase();
+        return mods.concat([key]).join('+');
+    }
+
+    /* 归一化串 -> CodeMirror 的写法（'Ctrl+Shift+F' -> 'Shift-Ctrl-F'） */
+    function toCmName(chord) {
+        if (!chord) return '';
+        const parts = chord.split('+');
+        const key = parts.pop();
+        const mods = [];
+        if (parts.indexOf('Shift') >= 0) mods.push('Shift');
+        if (parts.indexOf('Ctrl') >= 0) mods.push('Ctrl');
+        if (parts.indexOf('Alt') >= 0) mods.push('Alt');
+        const cmKey = {
+            Escape: 'Esc', ArrowLeft: 'Left', ArrowRight: 'Right',
+            ArrowUp: 'Up', ArrowDown: 'Down', Space: 'Space'
+        }[key] || key;
+        return mods.concat([cmKey]).join('-');
+    }
+
+    /* 显示用：'Ctrl+Shift+F' -> 'Ctrl + Shift + F' */
+    function prettyChord(chord) {
+        if (!chord) return '未绑定';
+        return chord.split('+').map((part) => {
+            if (part === 'ArrowLeft') return '←';
+            if (part === 'ArrowRight') return '→';
+            if (part === 'ArrowUp') return '↑';
+            if (part === 'ArrowDown') return '↓';
+            return part;
+        }).join(' + ');
+    }
+
+    function shortcutDef(id) {
+        return SHORTCUT_DEFS.find((d) => d.id === id) || null;
+    }
+
+    /* 当前生效的键位：用户改过就用改过的 */
+    function currentChord(def) {
+        const saved = state.shortcuts[def.id];
+        return (saved === undefined || saved === null) ? def.keys : saved;
+    }
+
+    /* 记录所有全局快捷键，供 keydown 分发时查表 */
+    let globalChordMap = new Map();
+
+    function rebuildGlobalChordMap() {
+        globalChordMap = new Map();
+        SHORTCUT_DEFS.forEach((def) => {
+            if (def.scope !== 'global') return;
+            const chord = currentChord(def);
+            if (!chord) return;
+            if (!globalChordMap.has(chord)) globalChordMap.set(chord, def);
+        });
+    }
+
+    /* 编辑器快捷键表：把每条映射交给 CodeMirror 的 extraKeys */
+    function buildEditorExtraKeys() {
+        const map = {};
+        const used = new Set();
+        SHORTCUT_DEFS.forEach((def) => {
+            if (def.scope !== 'editor') return;
+            const name = toCmName(currentChord(def));
+            if (name) used.add(name);
+        });
+        /* 先把 CodeMirror 自带、我们要接管的键位清空 */
+        CM_TAKEOVER_KEYS.forEach((name) => {
+            if (!used.has(name)) map[name] = () => { /* 已被 IDE 接管 */ };
+        });
+        SHORTCUT_DEFS.forEach((def) => {
+            if (def.scope !== 'editor') return;
+            const name = toCmName(currentChord(def));
+            if (name) map[name] = def.cmd;
+            /* 默认键位被改走后，把原来的键位也清掉，免得两个功能一起触发 */
+            if (def.cm && name !== def.cm && !used.has(def.cm)) map[def.cm] = () => { /* 已改绑 */ };
+        });
+        return map;
+    }
+
+    /* 把最新的编辑器键位表同步给所有已经创建的编辑器 */
+    function applyEditorShortcuts() {
+        const map = buildEditorExtraKeys();
+        state.tabs.forEach((tab) => {
+            if (tab.cm) tab.cm.setOption('extraKeys', map);
+        });
+    }
+
+    /* Escape：关掉最上面那层浮层 */
+    function closeTopPanel() {
+        if (!$('confirmBar').hidden) { closeConfirm(false); return true; }
+        if (!$('formatModal').hidden) { closeFormatView(); return true; }
+        if (!$('toolsDrawer').hidden) { closeTools(); return true; }
+        return false;
+    }
+
+    /* ------------------------------------------------------------------ */
+    /*  快捷键设置面板                                                     */
+    /* ------------------------------------------------------------------ */
+    function renderShortcutPanel() {
+        const box = $('keysList');
+        if (!box) return;
+        const filter = (($('keysFilter') && $('keysFilter').value) || '').trim().toLowerCase();
+        const groups = [];
+        SHORTCUT_DEFS.forEach((def) => {
+            if (filter && def.label.toLowerCase().indexOf(filter) < 0
+                && def.group.toLowerCase().indexOf(filter) < 0) return;
+            let group = groups.find((g) => g.name === def.group);
+            if (!group) { group = { name: def.group, items: [] }; groups.push(group); }
+            group.items.push(def);
+        });
+        if (!groups.length) {
+            box.innerHTML = '<p class="field-hint">没有匹配的快捷键。</p>';
+            return;
+        }
+        box.innerHTML = groups.map((group) => (
+            '<div class="keys-group">'
+            + '<div class="keys-group-title">' + escapeHtml(group.name) + '</div>'
+            + group.items.map((def) => {
+                const chord = currentChord(def);
+                const custom = state.shortcuts[def.id] !== undefined;
+                const recording = state.recording === def.id;
+                return '<div class="keys-row' + (recording ? ' recording' : '') + '" data-id="' + def.id + '">'
+                    + '<span class="keys-label">' + escapeHtml(def.label) + '</span>'
+                    + '<span class="keys-scope">' + (def.scope === 'editor' ? '编辑器' : '全局') + '</span>'
+                    + '<button type="button" class="keys-chord' + (custom ? ' custom' : '') + '" data-id="' + def.id + '">'
+                    + (recording ? '按下按键…' : escapeHtml(prettyChord(chord))) + '</button>'
+                    + (custom ? '<button type="button" class="keys-reset" data-id="' + def.id + '" title="恢复默认（'
+                        + escapeHtml(prettyChord(def.keys)) + '）">恢复</button>' : '')
+                    + '</div>';
+            }).join('')
+            + '</div>'
+        )).join('');
+
+        box.querySelectorAll('.keys-chord').forEach((btn) => {
+            btn.addEventListener('click', () => startRecording(btn.dataset.id));
+        });
+        box.querySelectorAll('.keys-reset').forEach((btn) => {
+            btn.addEventListener('click', () => resetShortcut(btn.dataset.id));
+        });
+    }
+
+    /* 开始录制：下一次按键就作为新快捷键 */
+    function startRecording(id) {
+        if (!shortcutDef(id)) return;
+        state.recording = id;
+        renderShortcutPanel();
+        toast('按下新的按键组合（Esc 取消，Backspace 删除该快捷键）', '');
+    }
+
+    function stopRecording() {
+        state.recording = null;
+        renderShortcutPanel();
+    }
+
+    /* 冲突检查：同一个键位不能被两个功能同时占用 */
+    function findChordConflict(id, chord) {
+        return SHORTCUT_DEFS.find((def) => {
+            if (def.id === id) return false;
+            return currentChord(def) === chord;
+        }) || null;
+    }
+
+    function setShortcut(id, chord) {
+        const def = shortcutDef(id);
+        if (!def) return;
+        const conflict = findChordConflict(id, chord);
+        if (conflict) {
+            toast('该键位已被「' + conflict.label + '」占用，请换一个', 'err');
+            return;
+        }
+        if (chord === def.keys || !chord) delete state.shortcuts[id];
+        else state.shortcuts[id] = chord;
+        persistShortcuts();
+        rebuildGlobalChordMap();
+        applyEditorShortcuts();
+        renderShortcutPanel();
+        toast('「' + def.label + '」已设为 ' + prettyChord(currentChord(def)), '');
+    }
+
+    function resetShortcut(id) {
+        const def = shortcutDef(id);
+        if (!def) return;
+        delete state.shortcuts[id];
+        persistShortcuts();
+        rebuildGlobalChordMap();
+        applyEditorShortcuts();
+        renderShortcutPanel();
+        toast('「' + def.label + '」已恢复默认', '');
+    }
+
+    function resetAllShortcuts() {
+        state.shortcuts = {};
+        persistShortcuts();
+        rebuildGlobalChordMap();
+        applyEditorShortcuts();
+        renderShortcutPanel();
+        toast('所有快捷键已恢复默认', '');
+    }
+
+    /* 快捷键也要跟着工作区一起保存（换电脑 / 换浏览器都还在） */
+    function persistShortcuts() {
+        try {
+            localStorage.setItem('cpide.shortcuts', JSON.stringify(state.shortcuts));
+        } catch (err) { /* ignore */ }
+        scheduleSaveWorkspace();
+    }
+
+    function loadShortcuts(saved) {
+        let data = saved;
+        if (data === undefined || data === null) {
+            try { data = JSON.parse(localStorage.getItem('cpide.shortcuts') || '{}'); }
+            catch (err) { data = {}; }
+        }
+        state.shortcuts = (data && typeof data === 'object') ? data : {};
+        rebuildGlobalChordMap();
     }
 
     /* ------------------------------------------------------------------ */
@@ -1225,6 +1520,7 @@ int main() {
                 statusHidden: isStatusHidden(),
                 statusCollapsed: !!(bar && bar.classList.contains('collapsed')),
                 sideHidden: state.sideHidden,
+                shortcuts: Object.assign({}, state.shortcuts),
                 md: {
                     highlight: state.mdOptions.highlight !== false,
                     lineNumbers: !!state.mdOptions.lineNumbers
@@ -1290,6 +1586,9 @@ int main() {
         }
         if (typeof settings.sideHidden === 'boolean') {
             setSideHidden(settings.sideHidden, false);
+        }
+        if (settings.shortcuts && typeof settings.shortcuts === 'object') {
+            loadShortcuts(settings.shortcuts);
         }
         if (settings.mode) switchMode(settings.mode);
         if (settings.md) {
@@ -2740,6 +3039,7 @@ int main() {
                 const page = document.querySelector('.tab-page[data-page="' + tab.dataset.tab + '"]');
                 if (page) page.classList.add('active');
                 if (tab.dataset.tab === 'insert' && !state.snippets.length) loadSnippets();
+                if (tab.dataset.tab === 'keys') renderShortcutPanel();
             });
         });
     }
@@ -3066,6 +3366,10 @@ int main() {
         $('btnExportAll').addEventListener('click', exportAllFiles);
         $('btnReloadWorkspace').addEventListener('click', reloadWorkspace);
 
+        // 快捷键设置面板
+        $('btnKeysResetAll').addEventListener('click', resetAllShortcuts);
+        $('keysFilter').addEventListener('input', renderShortcutPanel);
+
         // 配置说明弹窗
         $('btnConfigHelp').addEventListener('click', () => { $('configModal').hidden = false; });
         $('btnConfigClose').addEventListener('click', () => { $('configModal').hidden = true; });
@@ -3073,61 +3377,47 @@ int main() {
             if (event.target === $('configModal')) $('configModal').hidden = true;
         });
 
-        // 快捷键
+        // 快捷键：先处理「正在录制」，再按注册表分发
         document.addEventListener('keydown', (event) => {
-            const ctrl = event.ctrlKey || event.metaKey;
-            const alt = event.altKey;
-            if (ctrl && event.key.toLowerCase() === 'b') {
+            if (state.recording) {
                 event.preventDefault();
-                compileCode();
-            } else if (ctrl && event.key.toLowerCase() === 'j') {
-                event.preventDefault();
-                switchMode('judge');
-                judgeAll();
-            } else if (ctrl && event.shiftKey && event.key.toLowerCase() === 'f') {
-                event.preventDefault();
-                openFormatView();
-            } else if (ctrl && event.key.toLowerCase() === 'd') {
-                event.preventDefault();
-                toggleTheme();
-            } else if (ctrl && event.key.toLowerCase() === 's') {
-                event.preventDefault();
-                exportCurrentFile();
-            } else if (ctrl && event.key === 'Enter') {
-                event.preventDefault();
-                compileAndRun();
-            } else if (event.key === 'Escape') {
-                if (!$('confirmBar').hidden) { closeConfirm(false); return; }
-                if (!$('formatModal').hidden) { closeFormatView(); return; }
-                if (!$('toolsDrawer').hidden) { closeTools(); return; }
-            } else if (event.key === 'F5') {
-                event.preventDefault();
-                switchMode('sample');
-                runSample();
-            } else if (alt && !ctrl) {
-                // Alt 组合不会被浏览器占用，用来操作标签页
-                const key = event.key.toLowerCase();
-                if (key === 'n') {
-                    event.preventDefault();
-                    newTab();
-                } else if (key === 'w') {
-                    event.preventDefault();
-                    requestCloseTab(state.activeTabId);
-                } else if (key === 's') {
-                    event.preventDefault();
-                    toggleSplit();
-                } else if (key === 'h' || event.code === 'KeyH') {
-                    event.preventDefault();
-                    toggleSide();
-                } else if (event.key === 'ArrowLeft') {
-                    event.preventDefault();
-                    switchTabOffset(-1);
-                } else if (event.key === 'ArrowRight') {
-                    event.preventDefault();
-                    switchTabOffset(1);
-                }
+                event.stopPropagation();
+                handleRecordingKey(event);
+                return;
             }
+            const chord = canonFromEvent(event);
+            if (!chord) return;
+            const def = globalChordMap.get(chord);
+            if (!def) return;
+            event.preventDefault();
+            def.run(event);
         });
+    }
+
+    /* 录制快捷键：Esc 取消，Backspace 删除该快捷键，其余按下即绑定 */
+    function handleRecordingKey(event) {
+        const id = state.recording;
+        if (!id) return;
+        if (event.key === 'Escape') {
+            stopRecording();
+            toast('已取消录制', '');
+            return;
+        }
+        if (event.key === 'Backspace' && !event.ctrlKey && !event.altKey && !event.shiftKey) {
+            delete state.shortcuts[id];
+            persistShortcuts();
+            rebuildGlobalChordMap();
+            applyEditorShortcuts();
+            stopRecording();
+            toast('已删除该快捷键', '');
+            return;
+        }
+        /* 只按下修饰键时先等着 */
+        if (['Control', 'Alt', 'Shift', 'Meta', 'OS'].indexOf(event.key) >= 0) return;
+        const chord = canonFromEvent(event);
+        if (!chord) return;
+        setShortcut(id, chord);
+        stopRecording();
     }
 
     /* ------------------------------------------------------------------ */
@@ -3175,6 +3465,10 @@ int main() {
         } catch (err) {
             switchMode('sample');
         }
+
+        // 快捷键：先读浏览器缓存，工作区里有记录则以工作区为准
+        loadShortcuts();
+        renderShortcutPanel();
 
         // 读回上次的工作区（代码 / 编译信息 / 字体字号 / 各种开关）
         const workspace = await loadWorkspace();

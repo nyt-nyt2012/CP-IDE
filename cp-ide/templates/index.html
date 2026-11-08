@@ -309,6 +309,7 @@ if (location.protocol === 'file:') {
         <button class="tab" data-tab="insert" role="tab">插入代码</button>
         <button class="tab" data-tab="search" role="tab">查找替换</button>
         <button class="tab" data-tab="appearance" role="tab">外观</button>
+        <button class="tab" data-tab="keys" role="tab">快捷键</button>
       </div>
       <button class="icon-btn small" id="btnToolsClose" title="关闭设置面板">✕</button>
     </div>
@@ -604,6 +605,25 @@ if (location.protocol === 'file:') {
 
         <div class="section">
           <p class="hint">提示：<kbd>Ctrl</kbd>+<kbd>F</kbd> 打开编辑器原生查找，<kbd>Ctrl</kbd>+<kbd>H</kbd> 打开查找替换对话框。</p>
+        </div>
+      </div>
+
+      <!-- ---------------- 快捷键 ---------------- -->
+      <div class="tab-page" data-page="keys">
+        <div class="section">
+          <div class="section-title">
+            快捷键
+            <span class="spacer"></span>
+            <button class="link-btn" id="btnKeysResetAll">全部恢复默认</button>
+          </div>
+          <p class="field-hint">
+            点击右侧的按键框即可重新录制；按下 <kbd>Esc</kbd> 取消录制，
+            <kbd>Backspace</kbd> 删除该快捷键。改动会立即生效并保存在本机。
+          </p>
+          <div class="option-grid compact" style="margin-bottom:10px">
+            <input id="keysFilter" class="text-input" spellcheck="false" placeholder="搜索功能名…">
+          </div>
+          <div id="keysList" class="keys-list"></div>
         </div>
       </div>
 
