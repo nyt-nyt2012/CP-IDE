@@ -35,3 +35,6 @@ desktop.ini
 .env.*
 *.key
 *.pem
+
+# ---- 本地工作约定（仅本机保留，不进仓库） ----
+AGENTS.md

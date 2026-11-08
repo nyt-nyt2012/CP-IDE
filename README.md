@@ -70,31 +70,6 @@ python app.py
 
 ---
 
-## GitHub 仓库
-
-本项目已经初始化成 Git 仓库并推送到 GitHub：
-
-**<https://github.com/nyt-nyt2012/CP-IDE>**（**私有**仓库，分支 `main`）
-
-- **约定：每次改动完成后，都要提交并推送到这个仓库**，提交信息用中文写清改了什么。
-- 推送用本机自带的 Git（本机 `git` 不在 PATH，需用全路径 `C:\Program Files\Git\cmd\git.exe`）：
-
-  ```powershell
-  cd "C:\Users\nieyu\Desktop\IDE项目"
-  $git = "C:\Program Files\Git\cmd\git.exe"
-  & $git add -A
-  & $git commit -m "说明这次改了什么"
-  & $git push origin main
-  ```
-
-- 仓库根目录的 **`AGENTS.md`** 是给 AI / 协作者的**工作约定**：改动的规矩、测试与打包命令、
-  以及这个项目踩过的坑（360 会隔离新编译的 exe、PowerShell 读脚本的编码坑、`git` 不在 PATH 等），
-  改代码前先看它。
-- `.gitignore` 已排除打包产物、缓存、运行时临时目录与 `_ref/`（第三方参考代码）；
-  `.gitattributes` 固定了 `*.bat` / `*.vbs` 用 CRLF、源码用 LF。
-
----
-
 ## 依赖
 
 | 依赖 | 说明 |
