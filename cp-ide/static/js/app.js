@@ -221,7 +221,16 @@ int main() {
         lineWrapping: false,
         styleActiveLine: true,
         matchBrackets: true,
-        autoCloseBrackets: true,
+        /* 自动补全括号：
+           pairs 只留 ()[]{} —— 引号自动配对在中文输入时很碍事；
+           explode 置空 —— closebrackets 插件默认会在 } 前回车时「炸开」两行，
+           正是缩进乱跳的元凶之一。 */
+        autoCloseBrackets: {
+            pairs: '()[]{}',
+            closeBefore: ')]}>"\'',
+            triples: '',
+            explode: ''
+        },
         /* 快捷键统一在 buildEditorExtraKeys() 里生成，
            每个编辑器实例创建后再单独注入，方便随时改键。 */
         extraKeys: {},
@@ -265,6 +274,104 @@ int main() {
         /* 新建的编辑器也要拿到最新的快捷键表 */
         try { instance.setOption('extraKeys', buildEditorExtraKeys()); } catch (err) { /* ignore */ }
         return instance;
+    }
+
+    /* ------------------------------------------------------------------ */
+    /*  回车换行                                                            */
+    /* ------------------------------------------------------------------ */
+    /*  CodeMirror 自带的 newlineAndIndent 会让 C++ 模式按语法（花括号深度）
+       重新算一遍缩进：写完一个 } 再回车会突然缩回顶格，手写的缩进和语法
+       对不上时也会被"纠正"，看上去就是缩进在乱蹦。
+       这里改成和主流 IDE 一致的做法：
+         · 新行缩进 = 当前行的缩进，永远不会自己变；
+         · 行尾是 { ( [ 时多缩进一级，并把自动补出来的闭合括号放到下一行；
+         · // 注释自动续行。                                            */
+    const INDENT_PAIRS = { '{': '}', '(': ')', '[': ']' };
+
+    function editorEnter(cm) {
+        const sels = cm.listSelections();
+        /* 多选区 / 选中了文字：交给 CodeMirror 自己处理 */
+        if (sels.length !== 1 || !sels[0].empty()) {
+            if (CodeMirror.commands && CodeMirror.commands.newlineAndIndent) {
+                CodeMirror.commands.newlineAndIndent(cm);
+            }
+            return;
+        }
+        const doc = cm.getDoc();
+        const cur = sels[0].head;
+        const line = doc.getLine(cur.line);
+        const before = line.slice(0, cur.ch);
+        const after = line.slice(cur.ch);
+        const unit = cm.getOption('indentUnit') || 4;
+
+        /* 当前行的真实缩进（按列算，tab / 空格混用也不会算错） */
+        const curIndent = (line.match(/^[ \t]*/) || [''])[0];
+        const tabSize = cm.getOption('tabSize') || unit;
+        let curCols = 0;
+        for (const ch of curIndent) {
+            if (ch === '\t') curCols += tabSize - (curCols % tabSize);
+            else curCols++;
+        }
+        const useTabs = curIndent.indexOf('\t') >= 0;
+
+        /* 按列数生成缩进；原来用 tab 的文件继续用 tab */
+        const makeIndent = (cols) => {
+            if (!useTabs) return ' '.repeat(Math.max(0, cols));
+            const tabs = Math.floor(Math.max(0, cols) / unit);
+            return '\t'.repeat(tabs) + ' '.repeat(Math.max(0, cols) - tabs * unit);
+        };
+
+        /* 光标前的有效内容（去掉行尾空白） */
+        const head = before.replace(/[ \t]+$/, '');
+        const lastCh = head.slice(-1);
+        const openChar = INDENT_PAIRS[lastCh] ? lastCh : '';
+        const closeChar = openChar ? INDENT_PAIRS[openChar] : '';
+
+        /* 行尾是 { ( [ → 多缩进一级 */
+        const indentStr = makeIndent(curCols + (openChar ? unit : 0));
+        /* // 注释自动续行 */
+        const cont = /^\s*\/\//.test(line) ? '// ' : '';
+
+        /* 找与 openChar 匹配的闭合括号（可能就在光标后面，也可能隔了几步） */
+        let closeIdx = -1;
+        if (openChar) {
+            let depth = 1;
+            for (let i = 0; i < after.length; i++) {
+                const c = after.charAt(i);
+                if (c === openChar) depth++;
+                else if (c === closeChar) {
+                    depth--;
+                    if (depth === 0) { closeIdx = i; break; }
+                }
+            }
+        }
+
+        let text = '\n' + indentStr + cont;
+        let endCh = cur.ch;
+        let cursorLine = cur.line + 1;
+
+        if (closeIdx >= 0) {
+            const mid = after.slice(0, closeIdx).replace(/^[ \t]*/, '');
+            if (mid) {
+                /* 括号里的内容挪到新的一行，光标停在下面那行 */
+                text += mid + '\n' + indentStr;
+                cursorLine = cur.line + 2;
+            }
+            /* 只挪走闭合括号本身，它后面的内容留在原处 */
+            text += '\n' + makeIndent(curCols) + closeChar;
+            endCh = cur.ch + closeIdx + 1;
+        } else {
+            /* 行后半段：去掉它自己的前导空白，跟着新缩进走 */
+            endCh = cur.ch + (after.match(/^[ \t]*/) || [''])[0].length;
+        }
+
+        doc.replaceRange(
+            text,
+            { line: cur.line, ch: cur.ch },
+            { line: cur.line, ch: endCh },
+            '+input'
+        );
+        cm.setCursor(cursorLine, indentStr.length + cont.length);
     }
 
     /* 把某个标签页的编辑器挂到左栏 / 右栏 */
@@ -512,6 +619,9 @@ int main() {
         CM_TAKEOVER_KEYS.forEach((name) => {
             if (!used.has(name)) map[name] = () => { /* 已被 IDE 接管 */ };
         });
+        /* 回车：按当前行的缩进换行，不让语法重新计算。
+           放在用户快捷键之前 —— 用户真把某个功能改到 Enter 上时以用户为准。 */
+        map['Enter'] = editorEnter;
         SHORTCUT_DEFS.forEach((def) => {
             if (def.scope !== 'editor') return;
             const name = toCmName(currentChord(def));
@@ -533,6 +643,7 @@ int main() {
     /* Escape：关掉最上面那层浮层 */
     function closeTopPanel() {
         if (!$('confirmBar').hidden) { closeConfirm(false); return true; }
+        if (!$('licenseModal').hidden) { closeLicenseModal(); return true; }
         if (!$('formatModal').hidden) { closeFormatView(); return true; }
         if (!$('toolsDrawer').hidden) { closeTools(); return true; }
         return false;
@@ -1818,6 +1929,66 @@ int main() {
         } catch (err) {
             box.innerHTML = '<p class="field-hint">读取版本信息失败：' + escapeHtml(err.message) + '</p>';
         }
+    }
+
+    /* ------------------------------------------------------------------ */
+    /*  开源许可清单（设置 → 关于）                                         */
+    /* ------------------------------------------------------------------ */
+    function licenseRow(item, withFile) {
+        const name = escapeHtml(item.name || '');
+        const version = item.version && item.version !== '—'
+            ? '<span class="license-version">' + escapeHtml(item.version) + '</span>' : '';
+        const use = item.usage ? '<span class="license-use">' + escapeHtml(item.usage) + '</span>' : '';
+        const lic = '<span class="license-lic' + (withFile ? '' : ' external') + '">' +
+            escapeHtml(item.license || '-') + '</span>';
+        const open = withFile && item.file
+            ? '<button type="button" class="license-open" data-license="' + escapeHtml(item.file) +
+              '" data-title="' + escapeHtml(item.name + (item.version ? ' ' + item.version : '')) +
+              '" data-meta="' + escapeHtml([item.license, item.holder, item.url].filter(Boolean).join(' · ')) +
+              '">全文</button>'
+            : '<span></span>';
+        return '<div class="license-row"><span class="license-name">' + name + version + '</span>' +
+            use + lic + open + '</div>';
+    }
+
+    async function loadLicenses() {
+        const box = $('licenseList');
+        if (!box) return;
+        try {
+            const data = await api('/api/licenses');
+            const parts = [];
+            if (data.self) {
+                parts.push('<div class="license-group-title">本项目</div>');
+                parts.push(licenseRow(data.self, true));
+            }
+            parts.push('<div class="license-group-title">随 exe 一起分发的第三方组件</div>');
+            (data.components || []).forEach((item) => parts.push(licenseRow(item, true)));
+            parts.push('<div class="license-group-title">运行期用到、但不分发的组件</div>');
+            (data.external || []).forEach((item) => parts.push(licenseRow(item, false)));
+            box.innerHTML = parts.join('');
+        } catch (err) {
+            box.innerHTML = '<p class="field-hint">读取许可清单失败：' + escapeHtml(err.message) + '</p>';
+        }
+    }
+
+    async function openLicenseText(file, title, meta) {
+        const modal = $('licenseModal');
+        if (!modal) return;
+        $('licenseTitle').textContent = title || '许可证全文';
+        $('licenseMeta').textContent = meta || '';
+        $('licenseText').textContent = '正在读取…';
+        modal.hidden = false;
+        try {
+            const data = await api('/api/licenses/' + encodeURIComponent(file));
+            $('licenseText').textContent = data.text || '(空文件)';
+        } catch (err) {
+            $('licenseText').textContent = '读取失败：' + err.message;
+        }
+    }
+
+    function closeLicenseModal() {
+        const modal = $('licenseModal');
+        if (modal) modal.hidden = true;
     }
 
     /* 语言表（来自后端） */
@@ -3377,6 +3548,17 @@ int main() {
             if (event.target === $('configModal')) $('configModal').hidden = true;
         });
 
+        // 许可证全文弹窗
+        $('btnLicenseClose').addEventListener('click', closeLicenseModal);
+        $('licenseModal').addEventListener('click', (event) => {
+            if (event.target === $('licenseModal')) closeLicenseModal();
+        });
+        $('licenseList').addEventListener('click', (event) => {
+            const btn = event.target.closest('.license-open');
+            if (!btn) return;
+            openLicenseText(btn.dataset.license, btn.dataset.title, btn.dataset.meta);
+        });
+
         // 快捷键：先处理「正在录制」，再按注册表分发
         document.addEventListener('keydown', (event) => {
             if (state.recording) {
@@ -3493,6 +3675,7 @@ int main() {
         loadTestlibInfo();
         loadLanguages();
         loadAboutInfo();
+        loadLicenses();
 
         // 恢复上一次的编译信息
         if (workspace && workspace.compile) {

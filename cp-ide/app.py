@@ -31,6 +31,7 @@ from flask import __version__ as flask_version
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from core import languages  # noqa: E402
+from core import licenses as license_lib  # noqa: E402
 from core import savedialog  # noqa: E402
 from core import snippets as snippet_lib  # noqa: E402
 from core import winflags  # noqa: E402
@@ -623,6 +624,23 @@ def api_version():
             "frozen": bool(getattr(sys, "frozen", False)),
         }
     )
+
+
+@app.route("/api/licenses", methods=["GET"])
+def api_licenses():
+    """第三方组件的许可清单（界面「设置 → 关于 → 开源许可」里显示）。"""
+    data = license_lib.manifest()
+    data["ok"] = True
+    return jsonify(data)
+
+
+@app.route("/api/licenses/<path:filename>", methods=["GET"])
+def api_license_text(filename):
+    """某个许可证文件的全文。"""
+    text = license_lib.read_license(filename)
+    if text is None:
+        return jsonify({"ok": False, "error": "找不到该许可证文件"}), 404
+    return jsonify({"ok": True, "name": filename, "text": text})
 
 
 @app.route("/api/languages", methods=["GET"])

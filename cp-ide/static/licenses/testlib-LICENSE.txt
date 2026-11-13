@@ -1,0 +1,16 @@
+testlib.h 0.9.45 —— Mike Mirzayanov
+上游项目：https://github.com/MikeMirzayanov/testlib
+
+以下为 CP-IDE 内置 include/testlib.h 文件头部的原始声明：
+
+    Copyright (c) 2005-2025
+    Mike Mirzayanov
+
+    This material is provided "as is", with absolutely no warranty expressed
+    or implied. Any use is at your own risk.
+
+    Permission to use or copy this software for any purpose is hereby granted
+    without fee, provided the above notices are retained on all copies.
+    Permission to modify the code and to distribute modified code is granted,
+    provided the above notices are retained, and a notice that the code was
+    modified is included with the above copyright notice.

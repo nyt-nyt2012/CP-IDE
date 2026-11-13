@@ -331,6 +331,11 @@ def run_command(
             )
 
             if proc is not None:
+                # 计时从「进程真的跑起来」开始算。
+                # 杀毒软件会在 CreateProcess 内部扫描刚编译出来的 exe，
+                # 第一次启动可能卡住 1~3 秒；那段时间不是程序自己的运行时间，
+                # 算进时限里会被误判成 TLE。
+                started = time.perf_counter()
                 # Watchdog: enforce the time limit and the memory limit while the
                 # program is running.
                 deadline = started + time_limit_ms / 1000.0

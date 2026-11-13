@@ -699,6 +699,62 @@ code, pre, .mono { font-family: var(--mono); }
     word-break: break-all;
 }
 
+/* --------------------------- 开源许可清单 --------------------------- */
+.license-list {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--bg-input);
+    overflow: hidden;
+}
+.license-group-title {
+    padding: 7px 12px 5px;
+    font-size: 11px;
+    letter-spacing: .6px;
+    color: var(--text-faint);
+    background: var(--bg-panel);
+    border-bottom: 1px solid var(--border);
+}
+.license-row {
+    display: grid;
+    grid-template-columns: minmax(96px, 1.1fr) minmax(0, 2fr) auto;
+    align-items: baseline;
+    gap: 10px;
+    padding: 7px 12px;
+    border-bottom: 1px solid var(--border);
+    font-size: 11.5px;
+    color: var(--text-dim);
+}
+.license-row:last-child { border-bottom: none; }
+.license-name { color: var(--text); font-weight: 600; }
+.license-name .license-version {
+    font-family: var(--mono);
+    font-weight: 400;
+    color: var(--text-faint);
+    margin-left: 5px;
+}
+.license-use { color: var(--text-dim); }
+.license-lic {
+    display: inline-block;
+    font-family: var(--mono);
+    color: var(--accent);
+    white-space: nowrap;
+}
+.license-lic.external { color: var(--text-faint); }
+.license-open {
+    border: 1px solid var(--border-strong);
+    background: transparent;
+    color: var(--text-dim);
+    border-radius: var(--radius-sm);
+    padding: 2px 8px;
+    font-size: 11px;
+    cursor: pointer;
+}
+.license-open:hover { color: var(--text); border-color: var(--accent); }
+@media (max-width: 720px) {
+    .license-row { grid-template-columns: 1fr auto; }
+    .license-use { grid-column: 1 / -1; }
+}
+
 /* ---- 洛谷扩展语法 ---- */
 
 /* 代码块：顶部语言条 + 复制按钮 */

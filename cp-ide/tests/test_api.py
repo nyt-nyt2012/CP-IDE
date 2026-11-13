@@ -230,6 +230,22 @@ def main():
     result = app.test_client().get("/api/samples").get_json()
     check("built-in samples", len(result.get("samples") or []) >= 1, str(result)[:200])
 
+    # ---------------------------------------------------------------- licenses
+    result = app.test_client().get("/api/licenses").get_json()
+    check("licenses ok", result.get("ok") is True, str(result)[:200])
+    check("licenses list not empty", len(result.get("components") or []) >= 5, str(result)[:200])
+    check("licenses has self entry", (result.get("self") or {}).get("license") == "MIT", str(result.get("self"))[:200])
+    check("licenses has external", len(result.get("external") or []) >= 1, str(result)[:200])
+    names = [item.get("name") for item in result.get("components") or []]
+    check("licenses lists CodeMirror", "CodeMirror" in names, str(names))
+    check("licenses lists PDF.js", "PDF.js" in names, str(names))
+    text = app.test_client().get("/api/licenses/codemirror-LICENSE.txt").get_json()
+    check("license text served", text.get("ok") is True and "MIT" in (text.get("text") or ""), str(text)[:200])
+    missing = app.test_client().get("/api/licenses/does-not-exist.txt")
+    check("missing license 404", missing.status_code == 404, str(missing.status_code))
+    traversal = app.test_client().get("/api/licenses/..%2F..%2Fapp.py")
+    check("license path traversal blocked", traversal.status_code == 404, str(traversal.status_code))
+
     print()
     if failures:
         print("FAILED: %d" % len(failures))

@@ -28,6 +28,7 @@
 - **样例调试**：输入 / 期望输出 / 程序输出三栏 + 运行按钮，用于快速验证单个用例
 - **侧栏可折叠**（顶栏 ◨ 或 `Alt + H`）：把右侧样例 / 评测面板整个收起，编辑区占满整屏；分栏时两栏同步变宽，再按一次恢复
 - **编译并运行**（顶栏 ⏵ 或 `Ctrl + Enter`）：一步完成「编译 → 运行当前样例」，编译失败时只报错误、不运行
+- **缩进规则**：回车时**沿用当前行的缩进**，不会被语法分析「纠正」成别的缩进（这就是以前缩进会乱跳的原因）；行尾是 `{` `(` `[` 时自动多缩进一级，并把自动补出来的闭合括号放到下一行；`//` 注释回车自动续行
 - **批量评测**：上传 `.in` / `.out` / `.cfg` / `.zip`、测试点配置文件、逐点评测结果
 - **设置抽屉**（顶栏 ⚙）：编译环境 / 插入代码 / 查找替换 / 外观 / **快捷键**，从右侧滑出，不占右栏空间
 - **格式化视图**（顶栏 ✦）：左「原始代码」右「格式化结果」左右对照，可一键应用
@@ -113,6 +114,8 @@ python app.py
 | **外观（设置抽屉）** | 代码字体（Monospace / Consolas / Cascadia Mono / Cascadia Code / Lucida Console / JetBrains Mono / Fira Code / Source Code Pro / Sarasa Mono SC / Courier New，每项都有真实字体预览）、代码字号、主题、编译信息区显隐；全部记忆用户选择 |
 | **Markdown 文档（设置抽屉）** | 代码块语法高亮开关、代码块行号开关 |
 | **工作区与备份（设置抽屉）** | 导出当前文件、导出全部文件为 zip、重新载入上次的工作区；并显示工作区文件的存放位置 |
+| **开源许可（设置 → 外观 → 关于）** | 列出**随 exe 分发的全部第三方组件**（名称、版本、许可证、版权、用途），点「全文」可直接查看随 exe 一起打包的许可证原文；仓库根目录另有 `LICENSE` 与 `THIRD-PARTY-NOTICES.md` |
+| **回车缩进规则** | 回车时**沿用当前行的缩进**，不会因为语法分析忽然跳格；行尾是 `{` `(` `[` 时自动多缩进一级并把闭合括号放到下一行；`//` 注释自动续行 |
 | **导出到电脑** | 顶栏「⬇ 导出」（或 `Ctrl+S`）弹**系统原生「另存为」对话框**，把当前 `.cpp` / `.py` / `.md` 等存到电脑任意位置；「导出全部文件（zip）」则把所有标签页打成一个压缩包 |
 | **主题** | 深色 / 浅色一键切换（`Ctrl+D`），记忆用户选择，默认跟随系统 |
 
@@ -169,6 +172,36 @@ python app.py
 
 > 改键后原来那个键位会自动失效，不会出现「两个功能一起触发」的情况。
 > 搜索框可以按功能名 / 键名快速过滤，比如输入「查找」只会留下 4 条相关项。
+
+---
+
+## 开源许可与第三方声明
+
+CP-IDE 自身采用 **MIT 许可证**（见根目录 [`LICENSE`](LICENSE)）。
+它把一批开源组件打包进了单个 exe，因此逐一声明如下：
+
+| 组件 | 版本 | 许可证 | 用途 |
+| --- | --- | --- | --- |
+| CodeMirror | 5.65.16 | MIT | 编辑器内核（语法高亮、查找替换、括号补全） |
+| KaTeX | 0.16.11 | MIT | Markdown 预览里的 LaTeX 公式渲染 |
+| marked | 12.0.2 | MIT | Markdown 解析 |
+| PDF.js | 3.11.174 | Apache-2.0 | 内置 PDF 阅读器 |
+| testlib | 0.9.45 | testlib 自带的宽松许可 | 内置 `testlib.h`：自定义 Checker |
+| Python | 3.14 | PSF-2.0 | 打包进 exe 的解释器运行时 |
+| Flask / Werkzeug / Jinja2 / MarkupSafe / Click / Blinker / itsdangerous | — | BSD-3-Clause / MIT | 本地服务与模板渲染 |
+| pywebview | 6.2.1 | BSD-3-Clause | 桌面版窗口 |
+| PyInstaller | 6.22.3 | GPL-2.0-or-later（带例外条款） | 打包成单文件 exe 的引导器 |
+
+- **许可证全文**都放在 [`cp-ide/static/licenses/`](cp-ide/static/licenses/)，
+  **会一起打进 exe**，也可以在 **设置 → 外观 → 关于 → 开源许可**里点开查看；
+- 运行期用到但**不分发**的：MinGW-w64 g++（winlibs，GPL-3.0 + GCC Runtime Library Exception）；
+- 完整清单见根目录 [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md)。
+
+> **关于参考项目**：CP-IDE 设计时参考过 **CP Editor**（GPL-3.0-or-later，
+> Copyright © 2019-2021 Ashar Khan）的 `src/Core/` 源码。
+> CP-IDE 的后端是**用 Python 独立重写**的，没有复制其 GPL 代码，
+> CP Editor 的源码也只留在本机 `_ref/` 目录、不随 exe 与仓库分发，
+> 因此本项目可以采用宽松的 MIT 许可证。
 
 ---
 
@@ -436,6 +469,7 @@ cp-ide/
 │   ├── css/app.css           全部样式（深色 / 浅色双主题）
 │   ├── js/app.js             前端逻辑（标签页 / 分栏 / 多语言 / checker 集成 / 工作区）
 │   ├── js/md-enhance.js      Markdown 扩展渲染器（洛谷扩展语法 / 代码块高亮与行号）
+│   ├── licenses/             第三方组件的许可证全文（随 exe 一起分发）
 │   └── vendor/
 │       ├── codemirror/       本地化的 CodeMirror 5.65.16（含 Python / Markdown 语法模式）
 │       ├── katex/            KaTeX 0.16.11（CSS + 字体）
@@ -455,6 +489,8 @@ IDE项目/
 ├── CP-IDE.exe                打包好的桌面版（双击即用，离线，无需 Python）
 ├── Start CP-IDE.bat          启动器：优先拉起 CP-IDE.exe，没有则用 Python 起服务
 ├── README.md                 本文档
+├── LICENSE                   CP-IDE 自身的许可证（MIT）
+├── THIRD-PARTY-NOTICES.md    第三方组件与开源许可声明（含参考项目 CP Editor 的说明）
 ├── cp-ide/                   源码
 ├── testlib.h                 官方 testlib v0.9.45（已内置进 cp-ide/include/）
 ├── 测试点配置文件说明.md       测试点配置文件的写法
@@ -474,6 +510,8 @@ IDE项目/
 | GET | `/` | 主页面 |
 | GET | `/api/toolchain` | 编译器路径、版本、可用标准与比较方式 |
 | GET | `/api/languages` | 支持的文件类型（扩展名 → 编辑模式、是否可编译） |
+| GET | `/api/licenses` | 第三方组件的许可清单（名称、版本、许可证、版权、用途） |
+| GET | `/api/licenses/<filename>` | 某个许可证文件的全文（`static/licenses/` 下） |
 | POST | `/api/compile` | 编译（C++ 编译 / Python 语法检查），返回诊断、耗时、命令行、会话 id |
 | POST | `/api/run` | 运行单个测试用例并比对答案 |
 | POST | `/api/judge` | 编译并整批评测，返回逐点结果与汇总（包含自定义 checker 的使用情况） |
@@ -527,6 +565,11 @@ A：把 `winlibs-*.zip` 解压到任意目录，IDE 会在项目目录、桌面�
 **Q：项目放在含中文的路径下会不会有问题？**
 A：不会。MinGW 的 `ld.exe` 无法在含中文的路径下写出可执行文件，IDE 检测到后
 会自动把构建目录迁移到 `%TEMP%\cpide-work`。
+
+**Q：刚编译完的程序第一次运行偶尔报「运行时间 X ms 超过限制」，再跑一次就正常了？**
+A：那是杀毒软件在扫描刚生成的 exe——`CreateProcess` 内部会被卡住 1~3 秒。
+IDE 的计时**从进程真正跑起来才开始算**，这段扫描时间不会被算进时限，
+所以不会再误判成超时（真正的死循环仍然照常判 TLE）。
 
 **Q：自定义 checker 怎么写？**
 A：见上面「自定义 Checker（testlib）」一节。要点只有两条：`main` 第一行调用
