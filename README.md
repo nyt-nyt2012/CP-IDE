@@ -485,7 +485,7 @@ cp-ide/
 项目根目录：
 
 ```
-IDE项目/
+IDE/
 ├── CP-IDE.exe                打包好的桌面版（双击即用，离线，无需 Python）
 ├── Start CP-IDE.bat          启动器：优先拉起 CP-IDE.exe，没有则用 Python 起服务
 ├── README.md                 本文档
