@@ -491,6 +491,7 @@ IDE/
 ├── README.md                 本文档
 ├── LICENSE                   CP-IDE 自身的许可证（MIT）
 ├── THIRD-PARTY-NOTICES.md    第三方组件与开源许可声明（含参考项目 CP Editor 的说明）
+├── 开发纪要-2026-11-13.md     本次会话的开发纪要（需求 / 根因 / 验证 / 坑位清单）
 ├── cp-ide/                   源码
 ├── testlib.h                 官方 testlib v0.9.45（已内置进 cp-ide/include/）
 ├── 测试点配置文件说明.md       测试点配置文件的写法
